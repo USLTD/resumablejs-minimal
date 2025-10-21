@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Resumable File Upload</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        padding: 20px;
+        max-width: 800px;
+        margin: 0 auto;
+        background: #f5f5f5;
+      }
+      h1 {
+        margin-bottom: 20px;
+        color: #333;
+      }
+      .section {
+        background: white;
+        padding: 20px;
+        margin-bottom: 15px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      .section h2 {
+        font-size: 16px;
+        margin-bottom: 15px;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .form-group {
+        margin-bottom: 15px;
+      }
+      label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+        color: #333;
+      }
+      input[type="text"],
+      input[type="password"],
+      input[type="file"] {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+      }
+      input[type="text"]:focus,
+      input[type="password"]:focus {
+        outline: none;
+        border-color: #4caf50;
+      }
+      button {
+        background: #4caf50;
+        color: white;
+        padding: 12px 24px;
+        border: none;
+        border-radius: 4px;
+        font-size: 16px;
+        cursor: pointer;
+        width: 100%;
+      }
+      button:hover {
+        background: #45a049;
+      }
+      button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
+      .progress-container {
+        margin-top: 10px;
+      }
+      .progress-bar {
+        width: 100%;
+        height: 30px;
+        background: #f0f0f0;
+        border-radius: 4px;
+        overflow: hidden;
+        position: relative;
+      }
+      .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #4caf50, #45a049);
+        width: 0%;
+        transition: width 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: bold;
+        font-size: 14px;
+      }
+      .console {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        padding: 15px;
+        border-radius: 4px;
+        font-family: "Courier New", monospace;
+        font-size: 12px;
+        max-height: 300px;
+        overflow-y: auto;
+        line-height: 1.5;
+      }
+      .console-line {
+        margin-bottom: 5px;
+        word-wrap: break-word;
+      }
+      .console-line.error {
+        color: #f48771;
+      }
+      .console-line.success {
+        color: #4ec9b0;
+      }
+      .console-line.info {
+        color: #9cdcfe;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Resumable File Upload</h1>
+
+    <div class="section">
+      <h2>Server Configuration</h2>
+      <div class="form-group">
+        <label for="storageUrl">Storage URL</label>
+        <input
+          type="text"
+          id="storageUrl"
+          placeholder="https://your-server.com/upload"
+          value="/upload"
+        />
+      </div>
+      <div class="form-group">
+        <label for="accessKey">Access Key</label>
+        <input
+          type="password"
+          id="accessKey"
+          placeholder="Enter your access key"
+        />
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>File Selection</h2>
+      <div class="form-group">
+        <label for="fileInput">Select File</label>
+        <input type="file" id="fileInput" />
+      </div>
+      <div class="form-group">
+        <label for="folderName">Folder Name</label>
+        <input
+          type="text"
+          id="folderName"
+          placeholder="uploads"
+          value="uploads"
+        />
+      </div>
+    </div>
+
+    <div class="section">
+      <button id="submitBtn" disabled>Upload File</button>
+      <div class="progress-container">
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill">0%</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Console Output</h2>
+      <div class="console" id="console"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/resumablejs@1.1.0"></script>
+    <script>
+      // Console interceptor
+      const consoleElement = document.getElementById("console");
+      const originalLog = console.log;
+      const originalError = console.error;
+      const originalWarn = console.warn;
+
+      function addToConsole(message, type = "info") {
+        const line = document.createElement("div");
+        line.className = `console-line ${type}`;
+        line.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        consoleElement.appendChild(line);
+        consoleElement.scrollTop = consoleElement.scrollHeight;
+      }
+
+      console.log = function (...args) {
+        originalLog.apply(console, args);
+        addToConsole(args.join(" "), "info");
+      };
+
+      console.error = function (...args) {
+        originalError.apply(console, args);
+        addToConsole(args.join(" "), "error");
+      };
+
+      console.warn = function (...args) {
+        originalWarn.apply(console, args);
+        addToConsole(args.join(" "), "error");
+      };
+
+      const fileInput = document.getElementById("fileInput");
+      const submitBtn = document.getElementById("submitBtn");
+      const progressFill = document.getElementById("progressFill");
+      const storageUrl = document.getElementById("storageUrl");
+      const accessKey = document.getElementById("accessKey");
+      const folderName = document.getElementById("folderName");
+
+      const r = new Resumable({
+        target: storageUrl.value || "/upload",
+        throttleProgressCallbacks: 1
+      });
+
+      if (!r.support) {
+        console.error("Resumable.js is not supported in this browser");
+        alert("Your browser does not support Resumable.js");
+      } else {
+        console.log("Resumable.js initialized successfully");
+
+        // Assign file input
+        r.assignBrowse(fileInput);
+
+        // Event listeners
+        r.on("fileAdded", function (file, event) {
+          console.log(
+            "File added: " +
+              file.fileName +
+              " (" +
+              (file.size / 1024 / 1024).toFixed(2) +
+              " MB)",
+          );
+          submitBtn.disabled = false;
+        });
+
+        r.on("fileSuccess", function (file, message) {
+          console.log(
+            "✓ File uploaded successfully: " + file.fileName,
+            "success",
+          );
+          console.log("Server response: " + message, "success");
+        });
+
+        r.on("fileError", function (file, message) {
+          console.error("✗ Upload error for " + file.fileName + ": " + message);
+        });
+
+        r.on("fileProgress", function (file) {
+          const progress = Math.floor(file.progress() * 100);
+          console.log("Progress for " + file.fileName + ": " + progress + "%");
+        });
+
+        r.on("progress", function () {
+          const progress = Math.floor(r.progress() * 100);
+          progressFill.style.width = progress + "%";
+          progressFill.textContent = progress + "%";
+        });
+
+        r.on("complete", function () {
+          console.log("All files uploaded successfully!", "success");
+          submitBtn.textContent = "Upload File";
+          submitBtn.disabled = r.files.length === 0;
+        });
+
+        r.on("uploadStart", function () {
+          console.log("Upload started...");
+          submitBtn.textContent = "Uploading...";
+          submitBtn.disabled = true;
+        });
+
+        r.on("pause", function () {
+          console.log("Upload paused");
+        });
+
+        r.on("cancel", function () {
+          console.log("Upload cancelled");
+          progressFill.style.width = "0%";
+          progressFill.textContent = "0%";
+        });
+
+        r.on("error", function (message, file) {
+          console.error("Error: " + message);
+        });
+      }
+
+      submitBtn.addEventListener("click", function () {
+        if (r && r.files.length > 0) {
+          // Update target URL and query parameters
+          r.opts.target = storageUrl.value || "/upload";
+          r.opts.query = {
+            api_key: accessKey.value,
+            folder: folderName.value || "uploads",
+          };
+
+          console.log("Starting upload with configuration:");
+          console.log("- Target URL: " + storageUrl.value);
+          console.log("- Folder: " + folderName.value);
+          console.log("- Files: " + r.files.length);
+          r.upload();
+        } else {
+          console.warn("No files selected");
+        }
+      });
+
+      // Initial console message
+      console.log("Resumable Upload Interface Ready");
+      console.log("Configure your server settings and select a file to begin");
+    </script>
+  </body>
+</html>
